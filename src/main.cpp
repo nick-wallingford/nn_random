@@ -61,6 +61,8 @@ template <typename T, size_t Rows, size_t Columns> struct matrix {
     return *this;
   }
 
+  constexpr void add_outer_product(const vector<T, Rows> &, const vector<T, Columns> &) noexcept;
+
   void square_plus() noexcept {
     for (T &x : d) {
       const T x2 = x * x + 1;
@@ -313,6 +315,19 @@ matrix<T, Rows, Columns>::operator*(const vector<T, Columns> &v) const noexcept 
   return r;
 }
 
+template <typename T, size_t Rows, size_t Columns>
+constexpr void matrix<T, Rows, Columns>::add_outer_product(const vector<T, Rows> &a_,
+                                                           const vector<T, Columns> &b_) noexcept {
+  const T *a = a_.d.data();
+  T *o = d.data();
+  for (size_t i = Rows; i--;) {
+    const T *b = b_.d.data();
+    for (size_t j = Columns; j--;)
+      *o++ += *a * *b++;
+    ++a;
+  }
+}
+
 static_assert(matrix<int, 2, 3>{{1, 2, 3, 4, 5, 6}} * vector<int, 3>{{7, 8, 9}} == vector<int, 2>{{50, 122}});
 
 template <typename T, size_t N> std::ostream &operator<<(std::ostream &o, const vector<T, N> &v) {
@@ -346,18 +361,18 @@ int main() {
       Y.actual_sigmoid();
 
       vector_t E = Y - T[i];
-      vector_t E_sqr = E * E;
+      // vector_t E_sqr = E * E;
       if (!(iteration & (iteration - 1)))
         std::cout << (E * E).sum() << std::endl;
 
       vector_t grad_Y = E + E;
       vector_t grad_Y_in = Y * (vector_t{{1, 1}} - Y) * grad_Y;
 
-      grad_V += H.outer_product(grad_Y_in);
+      grad_V.add_outer_product(H, grad_Y_in);
 
       vector_t grad_H = V * grad_Y_in;
       vector_t grad_H_in = H * (vector_t{{1, 1}} - H) * grad_H;
-      grad_W += X[i].outer_product(grad_H_in);
+      grad_W.add_outer_product(X[i], grad_H_in);
     }
 
     grad_W *= alpha;
