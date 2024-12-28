@@ -1,6 +1,7 @@
 #include "matrix.hpp"
 #include "vector.hpp"
 #include <array>
+#include <boost/mp11.hpp>
 #include <cmath>
 #include <cstddef>
 #include <format>
@@ -19,10 +20,12 @@ template <typename T> T seed_random() {
 
 enum class activation_function { sigmoid, square_sigmoid, square_plus };
 
-template <typename T, activation_function Activation, activation_function FinalActivation> class neural_network {
+template <typename T, activation_function Activation, activation_function FinalActivation, size_t... Sizes>
+class neural_network {
+  using sizes = boost::mp11::mp_list_c<size_t, Sizes...>;
 
-  static constexpr std::array<size_t, 4> sizes{2, 4, 4, 2};
-  template <size_t Layer> using matrix_t = matrix<T, sizes[Layer], sizes[Layer + 1]>;
+  template <size_t Layer>
+  using matrix_t = matrix<T, boost::mp11::mp_at_c<sizes, Layer>::value, boost::mp11::mp_at_c<sizes, Layer + 1>::value>;
   using matrix_tuple_t = std::tuple<matrix_t<0>, matrix_t<1>, matrix_t<2>>;
   matrix_tuple_t layers;
   matrix_tuple_t gradients;
@@ -32,7 +35,7 @@ template <typename T, activation_function Activation, activation_function FinalA
   template <size_t Layer> matrix_t<Layer> &get_layer() noexcept { return std::get<Layer>(layers); }
   template <size_t Layer> matrix_t<Layer> &get_gradient() noexcept { return std::get<Layer>(gradients); }
 
-  template <size_t Layer> using vector_t = vector<T, sizes[Layer]>;
+  template <size_t Layer> using vector_t = vector<T, boost::mp11::mp_at_c<sizes, Layer>::value>;
   using vector_tuple_t = std::tuple<vector_t<1>, vector_t<2>, vector_t<3>>;
   vector_tuple_t intermediate_results;
   vector_tuple_t intermediate_deltas;
@@ -41,7 +44,7 @@ template <typename T, activation_function Activation, activation_function FinalA
 
   T alpha = .5;
 
-  std::vector<std::pair<vector_t<0>, vector_t<sizes.size() - 1>>> data;
+  std::vector<std::pair<vector_t<0>, vector_t<last_layer + 1>>> data;
 
   template <size_t layer, activation_function f> void apply_activation(T x, size_t i) noexcept {
     using enum activation_function;
@@ -63,7 +66,7 @@ template <typename T, activation_function Activation, activation_function FinalA
   }
 
   template <size_t layer> void apply_activation(T x, size_t i) noexcept {
-    if constexpr (layer == sizes.size() - 1)
+    if constexpr (layer == last_layer)
       apply_activation<layer, FinalActivation>(x, i);
     else
       apply_activation<layer, Activation>(x, i);
@@ -77,7 +80,7 @@ template <typename T, activation_function Activation, activation_function FinalA
         return data[i].first;
     }();
 
-#if 1
+#if 0
     const T *v = v_.d.data();
     const T *m = get_layer<Layer>().d.data();
     T *o = get_result<Layer>().d.data();
@@ -107,7 +110,7 @@ template <typename T, activation_function Activation, activation_function FinalA
       forward<Layer + 1>(-1);
   }
 
-  template <size_t N> void init(std::mt19937_64 &r, std::normal_distribution<T> &d) {
+  template <size_t N = last_layer> void init(std::mt19937_64 &r, std::normal_distribution<T> &d) {
     for (T &x : get_layer<N>().d)
       x = d(r);
     if constexpr (N)
@@ -138,7 +141,7 @@ template <typename T, activation_function Activation, activation_function FinalA
     const auto &in = get_gradient<Layer>();
     const T a = alpha / data.size();
     static_assert(in.d.size() == out.d.size());
-    for (size_t i = 0; i < sizes[Layer] * sizes[Layer + 1]; i++)
+    for (size_t i = 0; i < out.d.size(); i++)
       out.d[i] -= in.d[i] * a;
     if constexpr (Layer)
       apply<Layer - 1>();
@@ -148,13 +151,10 @@ public:
   void init() {
     auto r = seed_random<std::mt19937_64>();
     std::normal_distribution<T> d{0, 1};
-    init<sizes.size() - 2>(r, d);
+    init<>(r, d);
   }
 
-  static_assert(sizes.front() == 2);
-  static_assert(sizes.back() == 2);
-
-  void insert_pair(const vector_t<0> &x, const vector_t<sizes.size() - 1> &y) { data.emplace_back(x, y); }
+  void insert_pair(const vector_t<0> &x, const vector_t<last_layer + 1> &y) { data.emplace_back(x, y); }
 
   void train() {
     T e = 0;
@@ -172,7 +172,7 @@ public:
 };
 
 using neural_network_t =
-    neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid>;
+    neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid, 2, 4, 4, 2>;
 
 static float is_o(const vector<float, 2> &v) {
 #if 1
