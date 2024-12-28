@@ -1,3 +1,5 @@
+#include "matrix.hpp"
+#include "vector.hpp"
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -7,10 +9,6 @@
 #include <random>
 #include <tuple>
 #include <vector>
-
-#include "vector.hpp"
-
-#include "matrix.hpp"
 
 template <typename T> T seed_random() {
   std::random_device r;

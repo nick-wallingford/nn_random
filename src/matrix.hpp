@@ -122,6 +122,10 @@ template <typename T, size_t Rows, size_t Columns> struct alignas(64) matrix {
   }
 };
 
+static_assert(matrix<int, 2, 3>{{1, 2, 3, 4, 5, 6}} *
+                  matrix<int, 3, 4>{{7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}} ==
+              matrix<int, 2, 4>{{74, 80, 86, 92, 173, 188, 203, 218}});
+
 #include "vector.hpp"
 
 template <typename T, size_t Rows, size_t Columns>
@@ -164,7 +168,3 @@ constexpr void matrix<T, Rows, Columns>::add_outer_product(const vector<T, Rows>
 }
 
 static_assert(matrix<int, 2, 3>{{1, 2, 3, 4, 5, 6}} * vector<int, 3>{{7, 8, 9}} == vector<int, 2>{{50, 122}});
-
-static_assert(matrix<int, 2, 3>{{1, 2, 3, 4, 5, 6}} *
-                  matrix<int, 3, 4>{{7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}} ==
-              matrix<int, 2, 4>{{74, 80, 86, 92, 173, 188, 203, 218}});
