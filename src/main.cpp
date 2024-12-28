@@ -263,6 +263,8 @@ template <typename T, size_t N> struct alignas(64) vector {
     }
   }
 
+  [[nodiscard]] constexpr size_t size() const noexcept { return N; }
+
   [[nodiscard]] constexpr T err() const noexcept {
     T r = 0;
     for (const T x : d)
@@ -341,11 +343,14 @@ template <typename T, size_t N> std::ostream &operator<<(std::ostream &o, const 
 enum class activation_function { sigmoid, square_sigmoid, square_plus };
 
 template <typename T, activation_function Activation, activation_function FinalActivation> class neural_network {
-  static constexpr std::array<size_t, 4> sizes{2, 64, 64, 2};
+
+  static constexpr std::array<size_t, 4> sizes{2, 4, 4, 2};
   template <size_t Layer> using matrix_t = matrix<T, sizes[Layer], sizes[Layer + 1]>;
   using matrix_tuple_t = std::tuple<matrix_t<0>, matrix_t<1>, matrix_t<2>>;
   matrix_tuple_t layers;
   matrix_tuple_t gradients;
+
+  static constexpr size_t last_layer = std::tuple_size_v<matrix_tuple_t> - 1;
 
   template <size_t Layer> matrix_t<Layer> &get_layer() noexcept { return std::get<Layer>(layers); }
   template <size_t Layer> matrix_t<Layer> &get_gradient() noexcept { return std::get<Layer>(gradients); }
@@ -356,6 +361,8 @@ template <typename T, activation_function Activation, activation_function FinalA
   vector_tuple_t intermediate_deltas;
   template <size_t Layer> vector_t<Layer + 1> &get_result() noexcept { return std::get<Layer>(intermediate_results); }
   template <size_t Layer> vector_t<Layer + 1> &get_delta() noexcept { return std::get<Layer>(intermediate_deltas); }
+
+  T alpha = .5;
 
   std::vector<std::pair<vector_t<0>, vector_t<sizes.size() - 1>>> data;
 
@@ -392,6 +399,8 @@ template <typename T, activation_function Activation, activation_function FinalA
       else
         return data[i].first;
     }();
+
+#if 1
     const T *v = v_.d.data();
     const T *m = get_layer<Layer>().d.data();
     T *o = get_result<Layer>().d.data();
@@ -408,10 +417,16 @@ template <typename T, activation_function Activation, activation_function FinalA
     }
 
     o = get_result<Layer>().d.data();
-    for (size_t i = sizes[Layer + 1]; i--;)
+    for (size_t i = 0; i < sizes[Layer + 1]; i++)
       apply_activation<Layer>(*o++ + *v * *m++, i);
+#else
+    vector_t<Layer + 1> &o = get_result<Layer>();
+    o = v_ * get_layer<Layer>();
+    for (size_t i = 0; i < o.size(); i++)
+      apply_activation<Layer>(o[i], i);
+#endif
 
-    if constexpr (Layer + 1 < std::tuple_size_v<matrix_tuple_t>)
+    if constexpr (Layer < last_layer)
       forward<Layer + 1>(-1);
   }
 
@@ -422,8 +437,7 @@ template <typename T, activation_function Activation, activation_function FinalA
       init<N - 1>(r, d);
   }
 
-  template <size_t Layer = std::tuple_size_v<matrix_tuple_t> - 1>
-  void backward(size_t i, vector_t<Layer + 1> &grad_in) noexcept {
+  template <size_t Layer = last_layer> void backward(size_t i, vector_t<Layer + 1> &grad_in) noexcept {
     grad_in *= get_delta<Layer>();
     if constexpr (Layer) {
       get_gradient<Layer>().add_outer_product(get_result<Layer - 1>(), grad_in);
@@ -434,20 +448,21 @@ template <typename T, activation_function Activation, activation_function FinalA
     }
   }
 
-  template <size_t Layer = std::tuple_size_v<matrix_tuple_t> - 1> void reset() {
+  template <size_t Layer = last_layer> void reset() {
     matrix_t<Layer> &m = get_gradient<Layer>();
-    for (size_t i = 0; i < sizes[Layer] * sizes[Layer + 1]; i++)
-      m.d[i] = 0;
+    for (T &x : m.d)
+      x = 0;
     if constexpr (Layer)
       reset<Layer - 1>();
   }
 
-  template <size_t Layer = std::tuple_size_v<matrix_tuple_t> - 1> void apply() {
+  template <size_t Layer = last_layer> void apply() {
     auto &out = get_layer<Layer>();
     const auto &in = get_gradient<Layer>();
+    const T a = alpha / data.size();
     static_assert(in.d.size() == out.d.size());
     for (size_t i = 0; i < sizes[Layer] * sizes[Layer + 1]; i++)
-      out.d[i] -= in.d[i] * .01;
+      out.d[i] -= in.d[i] * a;
     if constexpr (Layer)
       apply<Layer - 1>();
   }
@@ -465,17 +480,17 @@ public:
   void insert_pair(const vector_t<0> &x, const vector_t<sizes.size() - 1> &y) { data.emplace_back(x, y); }
 
   void train() {
-    double e = 0;
+    T e = 0;
     for (size_t i = 0; i < data.size(); i++) {
       forward<>(i);
       reset<>();
-      vector_t<3> E = get_result<2>() - data[i].second;
+      vector_t<last_layer + 1> E = get_result<last_layer>() - data[i].second;
       e += E.err();
       E += E;
       backward<>(i, E);
       apply<>();
     }
-    std::cout << e << std::endl;
+    std::cout << e / data.size() << std::endl;
   }
 };
 
@@ -483,11 +498,12 @@ using neural_network_t =
     neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid>;
 
 static float is_o(const vector<float, 2> &v) {
+#if 1
   return v[0] * v[0] > v[1] ? 1 : -1;
-  /*
+#else
   const float mag = v[0] * v[0] + v[1] * v[1];
   return 1 < mag && mag < 2 ? 1 : -1;
-  */
+#endif
 }
 
 static float is_x(const vector<float, 2> &v) {
@@ -499,7 +515,7 @@ static float is_x(const vector<float, 2> &v) {
 static void fill_xo(neural_network_t &nn) {
   auto r = seed_random<std::mt19937_64>();
   std::uniform_real_distribution<float> d{-4, 4};
-  for (int i = 100000; i--;) {
+  for (int i = 1000; i--;) {
     vector<float, 2> in;
     do {
       in[0] = d(r);
