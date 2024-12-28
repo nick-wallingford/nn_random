@@ -26,7 +26,10 @@ class neural_network {
 
   template <size_t Layer>
   using matrix_t = matrix<T, boost::mp11::mp_at_c<sizes, Layer>::value, boost::mp11::mp_at_c<sizes, Layer + 1>::value>;
-  using matrix_tuple_t = std::tuple<matrix_t<0>, matrix_t<1>, matrix_t<2>>;
+  template <typename Layer> using matrix_c = matrix_t<Layer::value>;
+  using matrix_tuple_t = boost::mp11::mp_rename<
+      boost::mp11::mp_transform<matrix_c, boost::mp11::mp_iota_c<boost::mp11::mp_size<sizes>::value - 1>>, std::tuple>;
+
   matrix_tuple_t layers;
   matrix_tuple_t gradients;
 
@@ -36,7 +39,10 @@ class neural_network {
   template <size_t Layer> matrix_t<Layer> &get_gradient() noexcept { return std::get<Layer>(gradients); }
 
   template <size_t Layer> using vector_t = vector<T, boost::mp11::mp_at_c<sizes, Layer>::value>;
-  using vector_tuple_t = std::tuple<vector_t<1>, vector_t<2>, vector_t<3>>;
+  template <typename Size> using vector_c = vector<T, Size::value>;
+  using vector_tuple_t =
+      boost::mp11::mp_rename<boost::mp11::mp_transform<vector_c, boost::mp11::mp_pop_front<sizes>>, std::tuple>;
+
   vector_tuple_t intermediate_results;
   vector_tuple_t intermediate_deltas;
   template <size_t Layer> vector_t<Layer + 1> &get_result() noexcept { return std::get<Layer>(intermediate_results); }
@@ -80,24 +86,25 @@ class neural_network {
         return data[i].first;
     }();
 
-#if 0
+#if 1
+    using boost::mp11::mp_at_c;
     const T *v = v_.d.data();
     const T *m = get_layer<Layer>().d.data();
     T *o = get_result<Layer>().d.data();
 
-    for (size_t i = sizes[Layer + 1]; i--;)
+    for (size_t i = mp_at_c<sizes, Layer + 1>::value; i--;)
       *o++ = *v * *m++;
     ++v;
 
-    for (size_t i = sizes[Layer] - 1; --i;) {
+    for (size_t i = mp_at_c<sizes, Layer>::value - 1; --i;) {
       o = get_result<Layer>().d.data();
-      for (size_t j = sizes[Layer + 1]; j--;)
+      for (size_t j = mp_at_c<sizes, Layer + 1>::value; j--;)
         *o++ += *v * *m++;
       ++v;
     }
 
     o = get_result<Layer>().d.data();
-    for (size_t i = 0; i < sizes[Layer + 1]; i++)
+    for (size_t i = 0; i < mp_at_c<sizes, Layer + 1>::value; i++)
       apply_activation<Layer>(*o++ + *v * *m++, i);
 #else
     vector_t<Layer + 1> &o = get_result<Layer>();
@@ -140,7 +147,6 @@ class neural_network {
     auto &out = get_layer<Layer>();
     const auto &in = get_gradient<Layer>();
     const T a = alpha / data.size();
-    static_assert(in.d.size() == out.d.size());
     for (size_t i = 0; i < out.d.size(); i++)
       out.d[i] -= in.d[i] * a;
     if constexpr (Layer)
@@ -156,23 +162,25 @@ public:
 
   void insert_pair(const vector_t<0> &x, const vector_t<last_layer + 1> &y) { data.emplace_back(x, y); }
 
-  void train() {
+  void train(bool do_error = true) {
     T e = 0;
     for (size_t i = 0; i < data.size(); i++) {
       forward<>(i);
       reset<>();
       vector_t<last_layer + 1> E = get_result<last_layer>() - data[i].second;
-      e += E.err();
+      if (do_error)
+        e += E.err();
       E += E;
       backward<>(i, E);
       apply<>();
     }
-    std::cout << e / data.size() << std::endl;
+    if (do_error)
+      std::cout << e / data.size() << std::endl;
   }
 };
 
 using neural_network_t =
-    neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid, 2, 4, 4, 2>;
+    neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid, 2, 16, 32, 16, 2>;
 
 static float is_o(const vector<float, 2> &v) {
 #if 1
@@ -204,20 +212,26 @@ static void fill_xo(neural_network_t &nn) {
 }
 
 int main() {
-  using matrix_t = matrix<float, 2, 2>;
-  using vector_t = vector<float, 2>;
-
-  // matrix_t W{{6, -3, -2, 5}};
-  // matrix_t V{{1, -2, .25f, 2}};
-  std::array<matrix_t, 2> layers{matrix_t{{1, 2, 3, 4}}, matrix_t{{-1, -2, -3, -4}}};
-  const std::array<vector_t, 2> X{vector_t{{3, 1}}, vector_t{{-1, 4}}};
-  const std::array<vector_t, 2> T{vector_t{{1, 0}}, vector_t{{0, 1}}};
-
+#if 0
   std::unique_ptr<neural_network_t> nn = std::make_unique<neural_network_t>();
   nn->init();
   fill_xo(*nn);
   for (;;)
     nn->train();
+#elif 1
+  neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid, 2, 2, 2> nn;
+  nn.init();
+  nn.insert_pair({{3, 1}}, {{1, -1}});
+  nn.insert_pair({{-1, 4}}, {{-1, 1}});
+  for (size_t i = 0;; i++)
+    nn.train(!(i & (i - 1)));
+#else
+  using matrix_t = matrix<float, 2, 2>;
+  using vector_t = vector<float, 2>;
+
+  std::array<matrix_t, 2> layers{matrix_t{{1, 2, 3, 4}}, matrix_t{{-1, -2, -3, -4}}};
+  const std::array<vector_t, 2> X{vector_t{{3, 1}}, vector_t{{-1, 4}}};
+  const std::array<vector_t, 2> T{vector_t{{1, 0}}, vector_t{{0, 1}}};
 
   float alpha = -1;
 
@@ -247,4 +261,5 @@ int main() {
     layers[0] += grad[0];
     layers[1] += grad[1];
   }
+#endif
 }
