@@ -86,7 +86,7 @@ class neural_network {
         return data[i].first;
     }();
 
-#if 1
+#if 0
     using boost::mp11::mp_at_c;
     const T *v = v_.d.data();
     const T *m = get_layer<Layer>().d.data();
@@ -163,28 +163,31 @@ public:
   void insert_pair(const vector_t<0> &x, const vector_t<last_layer + 1> &y) { data.emplace_back(x, y); }
 
   void train(bool do_error = true) {
-    T e = 0;
+    vector_t<last_layer + 1> e{};
     for (size_t i = 0; i < data.size(); i++) {
       forward<>(i);
       reset<>();
       vector_t<last_layer + 1> E = get_result<last_layer>() - data[i].second;
-      if (do_error)
-        e += E.err();
+      if (do_error) {
+        e += E * E;
+      }
       E += E;
       backward<>(i, E);
       apply<>();
     }
-    if (do_error)
-      std::cout << e / data.size() << std::endl;
+    if (do_error) {
+      e *= static_cast<T>(1) / static_cast<T>(data.size());
+      std::cout << e.sum() << '\t' << e << std::endl;
+    }
   }
 };
 
-using neural_network_t =
-    neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid, 2, 16, 32, 16, 2>;
+using neural_network_t = neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid,
+                                        2, 16, 16, 16, 16, 3>;
 
 static float is_o(const vector<float, 2> &v) {
 #if 1
-  return v[0] * v[0] > v[1] ? 1 : -1;
+  return v[0] * v[0] > v[1] ? .5f : -.5f;
 #else
   const float mag = v[0] * v[0] + v[1] * v[1];
   return 1 < mag && mag < 2 ? 1 : -1;
@@ -194,30 +197,33 @@ static float is_o(const vector<float, 2> &v) {
 static float is_x(const vector<float, 2> &v) {
   const float a = std::abs(v[0] + v[1]);
   const float b = std::abs(v[0] - v[1]);
-  return a < 1 || b < 1 ? 1 : -1;
+  return a < 1 || b < 1 ? .5f : -.5f;
 }
 
 static void fill_xo(neural_network_t &nn) {
   auto r = seed_random<std::mt19937_64>();
   std::uniform_real_distribution<float> d{-4, 4};
-  for (int i = 1000; i--;) {
+  for (int i = 1000000; i--;) {
     vector<float, 2> in;
     do {
       in[0] = d(r);
       in[1] = d(r);
     } while (in[0] * in[0] + in[1] * in[1] > 16);
-    vector<float, 2> out{{is_o(in), is_x(in)}};
+    vector<float, 3> out{{is_o(in), is_x(in), ((in[0] > 0.0f) && (in[1] > 0.0f)) ? .5f : -.5f}};
+    in *= .25f;
     nn.insert_pair(in, out);
   }
 }
 
 int main() {
-#if 0
+  std::ios::sync_with_stdio(false);
+
+#if 1
   std::unique_ptr<neural_network_t> nn = std::make_unique<neural_network_t>();
   nn->init();
   fill_xo(*nn);
-  for (;;)
-    nn->train();
+  for (size_t i = 0;; i++)
+    nn->train(!(i & (i - 1)));
 #elif 1
   neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid, 2, 2, 2> nn;
   nn.init();

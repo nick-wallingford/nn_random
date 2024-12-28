@@ -47,6 +47,12 @@ template <typename T, size_t N> struct alignas(64) vector {
     return r;
   }
 
+  constexpr vector &operator*=(T o) noexcept {
+    for (T &x : d)
+      x *= o;
+    return *this;
+  }
+
   constexpr vector &operator*=(const vector &o) noexcept {
     for (size_t i = 0; i < N; i++)
       d[i] *= o[i];
