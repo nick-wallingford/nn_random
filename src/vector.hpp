@@ -74,66 +74,6 @@ template <typename T, size_t N> struct alignas(64) vector {
     return r;
   }
 
-  void square_plus() noexcept {
-    for (T &x : d) {
-      const T x2 = x * x + 1;
-      [[assume(x2 > 0)]];
-      x += std::sqrt(x2);
-      if constexpr (std::is_integral_v<T>)
-        x >>= 1;
-      else {
-        static constexpr T half = static_cast<T>(1) / static_cast<T>(2);
-        x *= half;
-      }
-    }
-  }
-
-  void d_square_plus() noexcept {
-    for (T &x : d) {
-      const T x2 = x * x + 1;
-      [[assume(x2 > 0)]];
-      x /= std::sqrt(x2);
-      x += 1;
-      if constexpr (std::is_integral_v<T>)
-        x >>= 1;
-      else {
-        static constexpr T half = static_cast<T>(1) / static_cast<T>(2);
-        x *= half;
-      }
-    }
-  }
-
-  void actual_sigmoid() noexcept {
-    for (T &x : d)
-      x = 1 / (1 + std::exp(-x));
-  }
-
-  void d_actual_sigmoid() noexcept {
-    for (T &x : d) {
-      const T num = std::exp(-x);
-      T den = 1 + num;
-      den *= den;
-      x = num / den;
-    }
-  }
-
-  void square_sigmoid() noexcept {
-    for (T &x : d) {
-      const T x2 = x * x + 1;
-      [[assume(x2 > 0)]];
-      x /= std::sqrt(x2);
-    }
-  }
-
-  void d_square_sigmoid() noexcept {
-    for (T &x : d) {
-      x *= x;
-      x += 1;
-      [[assume(x > 0)]];
-      x = std::sqrt(x) / (x * x);
-    }
-  }
-
   [[nodiscard]] constexpr size_t size() const noexcept { return N; }
 
   [[nodiscard]] constexpr T err() const noexcept {

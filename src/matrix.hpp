@@ -66,52 +66,6 @@ template <typename T, size_t Rows, size_t Columns> struct alignas(64) matrix {
 
   constexpr void add_outer_product(const vector<T, Rows> &, const vector<T, Columns> &) noexcept;
 
-  void square_plus() noexcept {
-    for (T &x : d) {
-      const T x2 = x * x + 1;
-      [[assume(x2 > 0)]];
-      x += std::sqrt(x2);
-      if constexpr (std::is_integral_v<T>)
-        x >>= 1;
-      else {
-        static constexpr T half = static_cast<T>(1) / static_cast<T>(2);
-        x *= half;
-      }
-    }
-  }
-
-  void d_square_plus() noexcept {
-    for (T &x : d) {
-      const T x2 = x * x + 1;
-      [[assume(x2 > 0)]];
-      x /= std::sqrt(x2);
-      x += 1;
-      if constexpr (std::is_integral_v<T>)
-        x >>= 1;
-      else {
-        static constexpr T half = static_cast<T>(1) / static_cast<T>(2);
-        x *= half;
-      }
-    }
-  }
-
-  void square_sigmoid() noexcept {
-    for (T &x : d) {
-      const T x2 = x * x + 1;
-      [[assume(x2 > 0)]];
-      x /= std::sqrt(x2);
-    }
-  }
-
-  void d_square_sigmoid() noexcept {
-    for (T &x : d) {
-      x *= x;
-      x += 1;
-      [[assume(x > 0)]];
-      x = std::sqrt(x) / (x * x);
-    }
-  }
-
   [[nodiscard]] constexpr vector<T, Rows> operator*(const vector<T, Columns> &) const noexcept;
 
   [[nodiscard]] constexpr bool operator==(const matrix &o) const noexcept {

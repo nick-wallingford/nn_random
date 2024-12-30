@@ -27,9 +27,9 @@ static constexpr float unsure_t = (true_t + false_t) / 2;
 [[maybe_unused]] static float is_o(const vector<float, 2> &v) {
   const float mag = v[0] * v[0] + v[1] * v[1];
 #if 1
-  return std::sqrt(4.f) < mag && mag < std::sqrt(12.f);
+  return 2 < mag && mag < 3.4641016151377544f ? true_t : false_t;
 #else
-  return mag < std::sqrt(6.f) ? true_t : false_t;
+  return mag < 2.449489742783178f ? true_t : false_t;
 #endif
 }
 
