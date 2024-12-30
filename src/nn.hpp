@@ -23,6 +23,10 @@ class neural_network {
   using sizes = boost::mp11::mp_list_c<size_t, Sizes...>;
   static_assert(boost::mp11::mp_size<sizes>::value >= 2);
 
+  template <size_t layer> [[nodiscard]] static constexpr size_t get_size() noexcept {
+    return boost::mp11::mp_at_c<sizes, layer>::value;
+  }
+
   template <size_t Layer>
   using matrix_t = matrix<T, boost::mp11::mp_at_c<sizes, Layer>::value, boost::mp11::mp_at_c<sizes, Layer + 1>::value>;
   template <typename Layer> using matrix_c = matrix_t<Layer::value>;
@@ -53,7 +57,6 @@ class neural_network {
   template <size_t Layer> vector_t<Layer + 1> &get_bias_delta() noexcept { return std::get<Layer>(biases); }
   template <size_t Layer> const vector_t<Layer + 1> &get_bias() const noexcept { return std::get<Layer>(biases); }
 
-  static constexpr T alpha = .1;
   static constexpr T fudge = 1;
 
   std::vector<vector_t<0>> data_in;
@@ -89,7 +92,7 @@ class neural_network {
     using enum activation_function;
     static constexpr activation_function f = layer == last_layer ? FinalActivation : Activation;
 
-    for (size_t i = 0; i < res.d.size(); i++) {
+    for (size_t i = 0; i < get_size<layer + 1>(); i++) {
       T &x = res[i];
       if constexpr (f == sigmoid) {
         const T e = 1 / (1 + std::exp(-x));
@@ -110,13 +113,22 @@ class neural_network {
     }
   }
 
-  template <size_t Layer = 0> __attribute__((noinline)) void forward(const vector_t<Layer> &in) noexcept {
+  // a = v * m
+  template <size_t Layer>
+  static constexpr void vec_mat_mul(T *__restrict a, const T *__restrict v, const T *__restrict m) {
+    static constexpr size_t size1 = get_size<Layer>();
+    static constexpr size_t size2 = get_size<Layer + 1>();
+    for (size_t i = size1; i--;) {
+      for (size_t j = 0; j < size2; j++)
+        a[j] += *v * *m++;
+      m += size2;
+    }
+  }
+
+  template <size_t Layer = 0> void forward(const vector_t<Layer> &in) noexcept {
     vector_t<Layer + 1> &next = get_result<Layer>();
     next = get_bias<Layer>();
-    const auto &m = get_layer<Layer>();
-    for (size_t i = 0; i < in.d.size(); i++)
-      for (size_t j = 0; j < next.d.size(); j++)
-        next[j] += in[i] * m[i][j];
+    vec_mat_mul<Layer>(next.d.data(), in.d.data(), get_layer<Layer>().d.data());
     apply_activation<Layer>();
 
     if constexpr (Layer < last_layer)
@@ -147,13 +159,12 @@ class neural_network {
     }
   }
 
-  template <size_t Layer = last_layer> void backward(size_t i, vector_t<Layer + 1> &grad_in) noexcept {
+  template <size_t Layer = last_layer> void backward(size_t i, vector_t<Layer + 1> grad_in) noexcept {
     grad_in *= get_delta<Layer>();
     get_bias_delta<Layer>() += grad_in;
     if constexpr (Layer) {
       get_gradient<Layer>().add_outer_product(get_result<Layer - 1>(), grad_in);
-      auto grad_out = get_layer<Layer>() * grad_in;
-      backward<Layer - 1>(i, grad_out);
+      backward<Layer - 1>(i, get_layer<Layer>() * grad_in);
     } else {
       get_gradient<Layer>().add_outer_product(data_in[i], grad_in);
     }
@@ -185,6 +196,8 @@ class neural_network {
   }
 
 public:
+  static constexpr T alpha = .01;
+
   void init() {
     auto r = seed_random<std::mt19937_64>();
     std::normal_distribution<T> d{0, 1};
@@ -211,7 +224,7 @@ public:
     }
     if (do_error) {
       e /= data_in.size();
-      std::cout << e.sum() << '\t' << e << std::endl;
+      std::cout << alpha << '\t' << e.sum() << '\t' << e << std::endl;
     }
   }
 

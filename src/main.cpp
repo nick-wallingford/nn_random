@@ -12,7 +12,7 @@
 using namespace nnla;
 
 using neural_network_t =
-    neural_network<float, activation_function::square_plus, activation_function::square_sigmoid, 2, 8, 16, 4>;
+    neural_network<float, activation_function::square_plus, activation_function::square_sigmoid, 2, 16, 32, 4>;
 
 static constexpr float true_t = 1;
 static constexpr float false_t = -1;
