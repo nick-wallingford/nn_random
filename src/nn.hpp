@@ -14,11 +14,9 @@ namespace detail {
 // a += v * m
 template <typename T, size_t size1, size_t size2>
 static constexpr void vec_mat_mul(T *__restrict a, const T *__restrict v, const T *__restrict m) {
-  for (size_t i = size2; i--;) {
+  for (size_t i = size2; i--; ++v)
     for (size_t j = 0; j < size1; j++)
       a[j] += *v * *m++;
-    m += size2;
-  }
 }
 
 } // namespace detail
@@ -200,7 +198,7 @@ class neural_network {
   }
 
 public:
-  static constexpr T alpha = .01;
+  static constexpr T alpha = .5;
 
   void init() {
     auto r = seed_random<std::mt19937_64>();
