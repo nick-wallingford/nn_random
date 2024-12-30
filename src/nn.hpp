@@ -9,6 +9,20 @@
 
 namespace nnla {
 
+namespace detail {
+
+// a += v * m
+template <typename T, size_t size1, size_t size2>
+static constexpr void vec_mat_mul(T *__restrict a, const T *__restrict v, const T *__restrict m) {
+  for (size_t i = size2; i--;) {
+    for (size_t j = 0; j < size1; j++)
+      a[j] += *v * *m++;
+    m += size2;
+  }
+}
+
+} // namespace detail
+
 template <typename T> T seed_random() {
   std::random_device r;
   std::seed_seq seed{r(), r(), r(), r()};
@@ -113,22 +127,12 @@ class neural_network {
     }
   }
 
-  // a = v * m
-  template <size_t Layer>
-  static constexpr void vec_mat_mul(T *__restrict a, const T *__restrict v, const T *__restrict m) {
-    static constexpr size_t size1 = get_size<Layer>();
-    static constexpr size_t size2 = get_size<Layer + 1>();
-    for (size_t i = size1; i--;) {
-      for (size_t j = 0; j < size2; j++)
-        a[j] += *v * *m++;
-      m += size2;
-    }
-  }
-
   template <size_t Layer = 0> void forward(const vector_t<Layer> &in) noexcept {
     vector_t<Layer + 1> &next = get_result<Layer>();
     next = get_bias<Layer>();
-    vec_mat_mul<Layer>(next.d.data(), in.d.data(), get_layer<Layer>().d.data());
+    static constexpr size_t size1 = get_size<Layer + 1>();
+    static constexpr size_t size2 = get_size<Layer>();
+    detail::vec_mat_mul<T, size1, size2>(next.d.data(), in.d.data(), get_layer<Layer>().d.data());
     apply_activation<Layer>();
 
     if constexpr (Layer < last_layer)
