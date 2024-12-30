@@ -7,6 +7,8 @@
 #include <random>
 #include <vector>
 
+namespace nnla {
+
 template <typename T> T seed_random() {
   std::random_device r;
   std::seed_seq seed{r(), r(), r(), r()};
@@ -43,10 +45,15 @@ class neural_network {
 
   vector_tuple_t intermediate_results;
   vector_tuple_t intermediate_deltas;
+  vector_tuple_t biases_deltas;
+  vector_tuple_t biases;
   template <size_t Layer> vector_t<Layer + 1> &get_result() noexcept { return std::get<Layer>(intermediate_results); }
   template <size_t Layer> vector_t<Layer + 1> &get_delta() noexcept { return std::get<Layer>(intermediate_deltas); }
+  template <size_t Layer> vector_t<Layer + 1> &get_bias() noexcept { return std::get<Layer>(biases); }
+  template <size_t Layer> vector_t<Layer + 1> &get_bias_delta() noexcept { return std::get<Layer>(biases); }
+  template <size_t Layer> const vector_t<Layer + 1> &get_bias() const noexcept { return std::get<Layer>(biases); }
 
-  static constexpr T alpha = .5;
+  static constexpr T alpha = .1;
   static constexpr T fudge = 1;
 
   std::vector<vector_t<0>> data_in;
@@ -103,7 +110,11 @@ class neural_network {
 
   template <size_t Layer = 0> void forward(const vector_t<Layer> &in) noexcept {
     vector_t<Layer + 1> &next = get_result<Layer>();
-    next = in * get_layer<Layer>();
+    next = get_bias<Layer>();
+    const auto &m = get_layer<Layer>();
+    for (size_t i = 0; i < in.d.size(); i++)
+      for (size_t j = 0; j < next.d.size(); j++)
+        next[j] += in[i] * m[i][j];
     apply_activation<Layer>();
 
     if constexpr (Layer < last_layer)
@@ -111,7 +122,11 @@ class neural_network {
   }
 
   template <size_t Layer = 0> const vector_t<last_layer + 1> forward_use(const vector_t<Layer> &in) const noexcept {
-    vector_t<Layer + 1> next = in * get_layer<Layer>();
+    vector_t<Layer + 1> next = get_bias<Layer>();
+    const auto &m = get_layer<Layer>();
+    for (size_t i = 0; i < in.d.size(); i++)
+      for (size_t j = 0; j < next.d.size(); j++)
+        next[j] += in[i] * m[i][j];
     apply_activation<Layer>(next);
 
     if constexpr (Layer < last_layer)
@@ -123,12 +138,16 @@ class neural_network {
   template <size_t N = last_layer> void init(std::mt19937_64 &r, std::normal_distribution<T> &d) {
     for (T &x : get_layer<N>().d)
       x = d(r);
-    if constexpr (N)
+    if constexpr (N) {
+      for (T &x : get_bias<N>().d)
+        x = d(r);
       init<N - 1>(r, d);
+    }
   }
 
   template <size_t Layer = last_layer> void backward(size_t i, vector_t<Layer + 1> &grad_in) noexcept {
     grad_in *= get_delta<Layer>();
+    get_bias_delta<Layer>() += grad_in;
     if constexpr (Layer) {
       get_gradient<Layer>().add_outer_product(get_result<Layer - 1>(), grad_in);
       auto grad_out = get_layer<Layer>() * grad_in;
@@ -139,8 +158,9 @@ class neural_network {
   }
 
   template <size_t Layer = last_layer> void reset() {
-    matrix_t<Layer> &m = get_gradient<Layer>();
-    for (T &x : m.d)
+    for (T &x : get_gradient<Layer>().d)
+      x = 0;
+    for (T &x : get_bias_delta<Layer>().d)
       x = 0;
     if constexpr (Layer)
       reset<Layer - 1>();
@@ -152,6 +172,12 @@ class neural_network {
     const T a = alpha / data_in.size();
     for (size_t i = 0; i < out.d.size(); i++)
       out.d[i] -= in.d[i] * a;
+
+    auto &out_bias = get_bias<Layer>();
+    const auto &in_bias = get_bias_delta<Layer>();
+    for (size_t i = 0; i < out_bias.d.size(); i++)
+      out_bias[i] -= in_bias[i] * a;
+
     if constexpr (Layer)
       apply<Layer - 1>();
   }
@@ -195,3 +221,5 @@ public:
     return out;
   }
 };
+
+} // namespace nnla

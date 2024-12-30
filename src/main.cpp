@@ -9,6 +9,8 @@
 #include <tuple>
 #include <vector>
 
+using namespace nnla;
+
 using neural_network_t =
     neural_network<float, activation_function::square_plus, activation_function::square_sigmoid, 2, 8, 16, 4>;
 
@@ -22,7 +24,11 @@ static constexpr float unsure_t = (true_t + false_t) / 2;
   return a < 1 || b < 1 ? true_t : false_t;
 }
 
-[[maybe_unused]] static float is_parabola(const vector<float, 2> &v) { return v[0] * v[0] < v[1] ? true_t : false_t; }
+[[maybe_unused]] static float is_xor(const vector<float, 2> &v) { return v[0] * v[1] > 0 ? true_t : false_t; }
+
+[[maybe_unused]] static float is_parabola(const vector<float, 2> &v) {
+  return -v[0] * v[0] * v[0] < v[1] ? true_t : false_t;
+}
 
 [[maybe_unused]] static float is_o(const vector<float, 2> &v) {
   const float mag = v[0] * v[0] + v[1] * v[1];
@@ -44,7 +50,7 @@ static void fill_xo(neural_network_t &nn) {
       in[0] = d(r);
       in[1] = d(r);
     } while (in[0] * in[0] + in[1] * in[1] > 16);
-    vector<float, 4> out{{is_o(in), is_x(in), is_parabola(in), is_and(in)}};
+    vector<float, 4> out{{is_o(in), is_x(in), is_parabola(in), is_xor(in)}};
     nn.insert_pair(in, out);
   }
 }

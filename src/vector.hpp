@@ -7,6 +7,8 @@
 #include <optional>
 #include <ostream>
 
+namespace nnla {
+
 template <typename T, size_t Rows, size_t Columns> struct alignas(64) matrix;
 
 template <typename T, size_t N> struct alignas(64) vector {
@@ -67,6 +69,12 @@ template <typename T, size_t N> struct alignas(64) vector {
     return *this;
   }
 
+  constexpr vector &operator-=(const vector &o) noexcept {
+    for (size_t i = 0; i < N; i++)
+      d[i] -= o.d[i];
+    return *this;
+  }
+
   [[nodiscard]] constexpr vector operator*(T x) const noexcept {
     vector r = *this;
     for (T &y : r.d)
@@ -98,15 +106,11 @@ template <typename T, size_t N> struct alignas(64) vector {
   [[nodiscard]] constexpr matrix<T, N, Columns> outer_product(const vector<T, Columns> &) const noexcept;
 };
 
-template <typename T, size_t N> std::ostream &operator<<(std::ostream &o, const vector<T, N> &v) {
-  o << '[';
-  for (size_t i = 0; i < N; i++)
-    o << std::format("{:10} ", v[i]);
-  o << ']';
-  return o;
-}
+} // namespace nnla
 
 #include "matrix.hpp"
+
+namespace nnla {
 
 template <typename T, size_t N>
 template <size_t Columns>
@@ -130,3 +134,12 @@ template <size_t Columns>
 
 static_assert(vector<int, 3>{(matrix<int, 1, 3>{{2, 3, 4}} * matrix<int, 3, 3>{{5, 6, 7, 8, 9, 10, 11, 12, 13}}).d} ==
               vector<int, 3>{{2, 3, 4}} * matrix<int, 3, 3>{{5, 6, 7, 8, 9, 10, 11, 12, 13}});
+} // namespace nnla
+
+template <typename T, size_t N> std::ostream &operator<<(std::ostream &o, const nnla::vector<T, N> &v) {
+  o << '[';
+  for (size_t i = 0; i < N; i++)
+    o << std::format("{:10} ", v[i]);
+  o << ']';
+  return o;
+}
