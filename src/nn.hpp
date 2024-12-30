@@ -69,8 +69,8 @@ class neural_network {
         x = fudge * e;
       } else {
         const T x1 = x * x + 1;
-        const T x2 = std::sqrt(x1);
-        const T x3 = 1 / x2;
+        const T x3 = 1 / std::sqrt(x1);
+        const T x2 = x1 * x3;
         if constexpr (f == square_plus) {
           x = x2 + fudge * x;
         } else if constexpr (f == square_sigmoid) {
@@ -84,6 +84,8 @@ class neural_network {
     vector_t<layer + 1> &res = get_result<layer>();
     vector_t<layer + 1> &delta = get_delta<layer>();
 
+    [[assume(&res != &delta)]];
+
     using enum activation_function;
     static constexpr activation_function f = layer == last_layer ? FinalActivation : Activation;
 
@@ -95,8 +97,8 @@ class neural_network {
         x = fudge * e;
       } else {
         const T x1 = x * x + 1;
-        const T x2 = std::sqrt(x1);
-        const T x3 = 1 / x2;
+        const T x3 = 1 / std::sqrt(x1);
+        const T x2 = x1 * x3;
         if constexpr (f == square_plus) {
           delta[i] = fudge + x * x3;
           x = x2 + fudge * x;
@@ -108,7 +110,7 @@ class neural_network {
     }
   }
 
-  template <size_t Layer = 0> void forward(const vector_t<Layer> &in) noexcept {
+  template <size_t Layer = 0> __attribute__((noinline)) void forward(const vector_t<Layer> &in) noexcept {
     vector_t<Layer + 1> &next = get_result<Layer>();
     next = get_bias<Layer>();
     const auto &m = get_layer<Layer>();
