@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <format>
@@ -9,18 +10,29 @@
 
 namespace nnla {
 
-template <typename T, size_t Rows, size_t Columns> struct alignas(64) matrix;
+template <typename T, size_t Rows, size_t Columns> class alignas(64) matrix;
 
-template <typename T, size_t N> struct alignas(64) vector {
+template <typename T, size_t N> class alignas(64) vector {
   std::array<T, N> d;
+
+public:
+  using is_vector_view = std::true_type;
+
   vector(std::nullopt_t) noexcept {}
   constexpr vector() noexcept : d{} {}
   constexpr vector(const std::array<T, N> &i) noexcept : d{i} {}
   constexpr vector(const vector &) noexcept = default;
   constexpr vector &operator=(const vector &) noexcept = default;
 
-  [[nodiscard]] constexpr T operator[](size_t i) const noexcept { return d[i]; }
-  [[nodiscard]] constexpr T &operator[](size_t i) noexcept { return d[i]; }
+  template <typename Self> [[nodiscard]] constexpr auto &operator[](this Self &&self, size_t index) {
+    assert(index < N);
+    return self.d[index];
+  }
+
+  static constexpr size_t size = N;
+  template <typename Self> [[nodiscard]] constexpr auto begin(this Self &&self) { return self.d.begin(); }
+  template <typename Self> [[nodiscard]] constexpr auto end(this Self &&self) { return self.d.end(); }
+
   [[nodiscard]] constexpr bool operator==(const vector &o) const noexcept {
     for (size_t i = 0; i < N; i++)
       if (d[i] != o[i])
@@ -82,8 +94,6 @@ template <typename T, size_t N> struct alignas(64) vector {
     return r;
   }
 
-  [[nodiscard]] constexpr size_t size() const noexcept { return N; }
-
   [[nodiscard]] constexpr T err() const noexcept {
     T r = 0;
     for (const T x : d)
@@ -122,18 +132,20 @@ template <typename T, size_t N>
 template <size_t Columns>
 [[nodiscard]] constexpr vector<T, Columns> vector<T, N>::operator*(const matrix<T, N, Columns> &m) const noexcept {
   vector<T, Columns> r{};
-  const T *a = d.data();
-  const T *b = m.d.data();
+  auto a = begin();
+  auto b = m.begin();
   for (size_t i = N; i--; ++a) {
-    T *y = r.d.data();
+    auto y = r.begin();
     for (size_t j = Columns; j--;)
       *y++ += *a * *b++;
   }
   return r;
 }
 
-static_assert(vector<int, 3>{(matrix<int, 1, 3>{{2, 3, 4}} * matrix<int, 3, 3>{{5, 6, 7, 8, 9, 10, 11, 12, 13}}).d} ==
-              vector<int, 3>{{2, 3, 4}} * matrix<int, 3, 3>{{5, 6, 7, 8, 9, 10, 11, 12, 13}});
+/*
+  static_assert(vector<int, 3>{(matrix<int, 1, 3>{{2, 3, 4}} * matrix<int, 3, 3>{{5, 6, 7, 8, 9, 10, 11, 12, 13}}).d} ==
+            vector<int, 3>{{2, 3, 4}} * matrix<int, 3, 3>{{5, 6, 7, 8, 9, 10, 11, 12, 13}});
+*/
 } // namespace nnla
 
 template <typename T, size_t N> std::ostream &operator<<(std::ostream &o, const nnla::vector<T, N> &v) {

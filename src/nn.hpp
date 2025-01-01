@@ -9,18 +9,6 @@
 
 namespace nnla {
 
-namespace detail {
-
-// a += v * m
-template <typename T, size_t size1, size_t size2>
-static constexpr void vec_mat_mul(T *__restrict a, const T *__restrict v, const T *__restrict m) {
-  for (size_t i = size2; i--; ++v)
-    for (size_t j = 0; j < size1; j++)
-      a[j] += *v * *m++;
-}
-
-} // namespace detail
-
 template <typename T> T seed_random() {
   std::random_device r;
   std::seed_seq seed{r(), r(), r(), r()};
@@ -78,7 +66,7 @@ class neural_network {
     using enum activation_function;
     static constexpr activation_function f = layer == last_layer ? FinalActivation : Activation;
 
-    for (T &x : res.d) {
+    for (T &x : res) {
       if constexpr (f == sigmoid) {
         const T e = 1 / (1 + std::exp(-x));
         x = fudge * e;
@@ -95,7 +83,7 @@ class neural_network {
     }
   }
 
-  template <size_t layer> void apply_activation() noexcept {
+  template <size_t layer> void apply_activation_and_delta(const vector_t<layer + 1> &x) noexcept {
     vector_t<layer + 1> &res = get_result<layer>();
     vector_t<layer + 1> &delta = get_delta<layer>();
 
@@ -105,43 +93,42 @@ class neural_network {
     static constexpr activation_function f = layer == last_layer ? FinalActivation : Activation;
 
     for (size_t i = 0; i < get_size<layer + 1>(); i++) {
-      T &x = res[i];
       if constexpr (f == sigmoid) {
-        const T e = 1 / (1 + std::exp(-x));
+        const T e = 1 / (1 + std::exp(-x[i]));
         delta[i] = fudge * e * (1 - e);
-        x = fudge * e;
+        res[i] = fudge * e;
       } else {
-        const T x1 = x * x + 1;
+        const T x1 = x[i] * x[i] + 1;
         const T x3 = 1 / std::sqrt(x1);
         const T x2 = x1 * x3;
         if constexpr (f == square_plus) {
-          delta[i] = fudge + x * x3;
-          x = x2 + fudge * x;
+          delta[i] = fudge + x[i] * x3;
+          res[i] = x2 + fudge * x[i];
         } else if constexpr (f == square_sigmoid) {
           delta[i] = fudge * x3 * x3 * x3;
-          x = fudge * x * x3;
+          res[i] = fudge * x[i] * x3;
         }
       }
     }
   }
 
   template <size_t Layer = 0> void forward(const vector_t<Layer> &in) noexcept {
-    vector_t<Layer + 1> &next = get_result<Layer>();
-    next = get_bias<Layer>();
-    static constexpr size_t size1 = get_size<Layer + 1>();
-    static constexpr size_t size2 = get_size<Layer>();
-    detail::vec_mat_mul<T, size1, size2>(next.d.data(), in.d.data(), get_layer<Layer>().d.data());
-    apply_activation<Layer>();
+    vector_t<Layer + 1> next = get_bias<Layer>();
+    const auto &m = get_layer<Layer>();
+    for (size_t i = 0; i < in.size; i++)
+      for (size_t j = 0; j < next.size; j++)
+        next[j] += in[i] * m[i][j];
+    apply_activation_and_delta<Layer>(next);
 
     if constexpr (Layer < last_layer)
-      forward<Layer + 1>(next);
+      forward<Layer + 1>(get_result<Layer>());
   }
 
   template <size_t Layer = 0> const vector_t<last_layer + 1> forward_use(const vector_t<Layer> &in) const noexcept {
     vector_t<Layer + 1> next = get_bias<Layer>();
     const auto &m = get_layer<Layer>();
-    for (size_t i = 0; i < in.d.size(); i++)
-      for (size_t j = 0; j < next.d.size(); j++)
+    for (size_t i = 0; i < in.size; i++)
+      for (size_t j = 0; j < next.size; j++)
         next[j] += in[i] * m[i][j];
     apply_activation<Layer>(next);
 
@@ -152,16 +139,17 @@ class neural_network {
   }
 
   template <size_t N = last_layer> void init(std::mt19937_64 &r, std::normal_distribution<T> &d) {
-    for (T &x : get_layer<N>().d)
+    for (T &x : get_layer<N>())
       x = d(r);
     if constexpr (N) {
-      for (T &x : get_bias<N>().d)
+      for (T &x : get_bias<N>())
         x = d(r);
       init<N - 1>(r, d);
     }
   }
 
-  template <size_t Layer = last_layer> void backward(size_t i, vector_t<Layer + 1> grad_in) noexcept {
+  template <size_t Layer = last_layer>
+  __attribute__((noinline)) void backward(size_t i, vector_t<Layer + 1> grad_in) noexcept {
     grad_in *= get_delta<Layer>();
     get_bias_delta<Layer>() += grad_in;
     if constexpr (Layer) {
@@ -173,25 +161,25 @@ class neural_network {
   }
 
   template <size_t Layer = last_layer> void reset() {
-    for (T &x : get_gradient<Layer>().d)
+    for (T &x : get_gradient<Layer>())
       x = 0;
-    for (T &x : get_bias_delta<Layer>().d)
+    for (T &x : get_bias_delta<Layer>())
       x = 0;
     if constexpr (Layer)
       reset<Layer - 1>();
   }
 
   template <size_t Layer = last_layer> void apply() {
-    auto &out = get_layer<Layer>();
-    const auto &in = get_gradient<Layer>();
+    auto out = get_layer<Layer>().begin();
+    auto in = get_gradient<Layer>().begin();
     const T a = alpha / data_in.size();
-    for (size_t i = 0; i < out.d.size(); i++)
-      out.d[i] -= in.d[i] * a;
+    for (size_t i = get_layer<Layer>().size; i--;)
+      *out++ -= *in++ * a;
 
-    auto &out_bias = get_bias<Layer>();
-    const auto &in_bias = get_bias_delta<Layer>();
-    for (size_t i = 0; i < out_bias.d.size(); i++)
-      out_bias[i] -= in_bias[i] * a;
+    auto out_bias = get_bias<Layer>().begin();
+    auto in_bias = get_bias_delta<Layer>().begin();
+    for (size_t i = get_bias<Layer>().size; i--;)
+      *out_bias++ -= *in_bias++ * a;
 
     if constexpr (Layer)
       apply<Layer - 1>();
@@ -211,23 +199,20 @@ public:
     data_out.emplace_back(y);
   }
 
-  void train(bool do_error = true) {
+  vector_t<last_layer + 1> train() noexcept {
     vector_t<last_layer + 1> e{};
     for (size_t i = 0; i < data_in.size(); i++) {
+      [[likely]];
       forward<>(data_in[i]);
       reset<>();
       vector_t<last_layer + 1> E = get_result<last_layer>() - data_out[i];
-      if (do_error) {
-        e += E * E;
-      }
+      e += E * E;
       E += E;
       backward<>(i, E);
       apply<>();
     }
-    if (do_error) {
-      e /= data_in.size();
-      std::cout << alpha << '\t' << e.sum() << '\t' << e << std::endl;
-    }
+    e /= data_in.size();
+    return e;
   }
 
   std::vector<vector_t<last_layer + 1>> forward(const std::vector<vector_t<0>> &in) const noexcept {

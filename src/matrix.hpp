@@ -8,11 +8,12 @@
 
 namespace nnla {
 
-template <typename T, size_t N> struct alignas(64) vector;
+template <typename T, size_t N> class alignas(64) vector;
 
-template <typename T, size_t Rows, size_t Columns> struct alignas(64) matrix {
+template <typename T, size_t Rows, size_t Columns> class alignas(64) matrix {
   std::array<T, Columns * Rows> d;
 
+public:
   matrix(std::nullopt_t) noexcept {}
   constexpr matrix() noexcept : d{} {}
   constexpr matrix(const std::array<T, Columns * Rows> &i) noexcept : d{i} {}
@@ -22,13 +23,17 @@ template <typename T, size_t Rows, size_t Columns> struct alignas(64) matrix {
   [[nodiscard]] constexpr const T *operator[](size_t y) const noexcept { return d.data() + y * Columns; }
   [[nodiscard]] constexpr T *operator[](size_t y) noexcept { return d.data() + y * Columns; }
 
+  static constexpr size_t size = Rows * Columns;
+  template <typename Self> [[nodiscard]] constexpr auto begin(this Self &&self) { return self.d.begin(); }
+  template <typename Self> [[nodiscard]] constexpr auto end(this Self &&self) { return self.d.end(); }
+
   template <size_t O>
   [[nodiscard]] constexpr matrix<T, Rows, O> operator*(const matrix<T, Columns, O> &o) const noexcept {
     matrix<T, Rows, O> r;
-    const T *in_l = d.data();
-    T *out = r.d.data();
+    auto in_l = begin();
+    auto out = r.begin();
     for (size_t y = 0; y < Rows; y++) {
-      const T *b = o[0];
+      auto b = o.begin();
       for (size_t x = 0; x < Columns; x++) {
         const T c = *in_l++;
         for (size_t z = 0; z < O; z++)
@@ -49,14 +54,14 @@ template <typename T, size_t Rows, size_t Columns> struct alignas(64) matrix {
   [[nodiscard]] constexpr matrix operator-(const matrix &o) const noexcept {
     matrix r;
     for (size_t i = 0; i < Rows * Columns; i++)
-      r[i] = d[i] - o[i];
+      r[i] = d[i] - o.d[i];
     return r;
   }
 
   [[nodiscard]] constexpr matrix operator+(const matrix &o) const noexcept {
     matrix r;
     for (size_t i = 0; i < Rows * Columns; i++)
-      r[i] = d[i] + o[i];
+      r[i] = d[i] + o.d[i];
     return r;
   }
 
@@ -93,12 +98,12 @@ template <typename T, size_t Rows, size_t Columns>
 matrix<T, Rows, Columns>::operator*(const vector<T, Columns> &v) const noexcept {
   vector<T, Rows> r{};
   const T *a = d.data();
-  T *c = r.d.data();
+  auto c = r.begin();
   for (size_t i = Rows; i--;) {
-    const T *b = v.d.data();
+    auto b = v.begin();
     for (size_t j = Columns; j--;)
       *c += *a++ * *b++;
-    c++;
+    ++c;
   }
   return r;
 }
@@ -106,10 +111,10 @@ matrix<T, Rows, Columns>::operator*(const vector<T, Columns> &v) const noexcept 
 template <typename T, size_t Rows, size_t Columns>
 constexpr void matrix<T, Rows, Columns>::add_outer_product(const vector<T, Rows> &a_,
                                                            const vector<T, Columns> &b_) noexcept {
-  const T *a = a_.d.data();
+  auto a = a_.begin();
   T *o = d.data();
   for (size_t i = Rows; i--;) {
-    const T *b = b_.d.data();
+    auto b = b_.begin();
     for (size_t j = Columns; j--;)
       *o++ += *a * *b++;
     ++a;

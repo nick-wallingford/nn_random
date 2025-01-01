@@ -12,7 +12,7 @@
 using namespace nnla;
 
 using neural_network_t =
-    neural_network<float, activation_function::square_plus, activation_function::square_sigmoid, 2, 16, 32, 4>;
+    neural_network<float, activation_function::square_plus, activation_function::square_sigmoid, 2, 32, 32, 4>;
 
 static constexpr float true_t = 1;
 static constexpr float false_t = -1;
@@ -62,7 +62,7 @@ static void print(const neural_network_t &nn) {
       in.push_back(vector<float, 2>{{x, y}});
   const auto v = nn.forward(in);
   static constexpr std::array<std::string_view, 3> chars{"\033[31mX", "\033[32m0", "\033[0m"};
-  for (size_t i = 0; i < v[0].d.size(); i++) {
+  for (size_t i = 0; i < v[0].size; i++) {
     size_t j = 0;
     for (float y = 4; y >= -4; y -= 16.f / 40.f) {
       for (float x = -4; x <= 4; x += 8.f / 40.f)
@@ -87,9 +87,11 @@ int main() {
   fill_xo(*nn);
   for (size_t i = 0;; i++) {
     const bool doit = !(i & (i - 1));
-    if (doit)
+    const auto e = nn->train();
+    if (doit) {
       print(*nn);
-    nn->train(doit);
+      std::cout << nn->alpha << '\t' << e.sum() << '\t' << e << std::endl;
+    }
   }
 #elif 1
   neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid, 2, 2, 2> nn;
