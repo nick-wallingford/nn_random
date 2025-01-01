@@ -20,6 +20,9 @@ enum class activation_function { sigmoid, square_sigmoid, square_plus };
 
 template <typename T, activation_function Activation, activation_function FinalActivation, size_t... Sizes>
 class neural_network {
+  std::mt19937_64 random = seed_random<std::mt19937_64>();
+  std::normal_distribution<T> dist{0, 1};
+
   using sizes = boost::mp11::mp_list_c<size_t, Sizes...>;
   static_assert(boost::mp11::mp_size<sizes>::value >= 2);
 
@@ -138,14 +141,13 @@ class neural_network {
       return next;
   }
 
-  template <size_t N = last_layer> void init(std::mt19937_64 &r, std::normal_distribution<T> &d) {
+  template <size_t N = last_layer> void init() {
     for (T &x : get_layer<N>())
-      x = d(r);
-    if constexpr (N) {
-      for (T &x : get_bias<N>())
-        x = d(r);
-      init<N - 1>(r, d);
-    }
+      x = dist(random);
+    for (T &x : get_bias<N>())
+      x = dist(random);
+    if constexpr (N)
+      init<N - 1>();
   }
 
   template <size_t Layer = last_layer>
@@ -173,13 +175,15 @@ class neural_network {
     auto out = get_layer<Layer>().begin();
     auto in = get_gradient<Layer>().begin();
     const T a = alpha / data_in.size();
-    for (size_t i = get_layer<Layer>().size; i--;)
-      *out++ -= *in++ * a;
+    for (size_t i = get_layer<Layer>().size; i--; ++out, ++in)
+      *out -= *in * a;
 
     auto out_bias = get_bias<Layer>().begin();
     auto in_bias = get_bias_delta<Layer>().begin();
     for (size_t i = get_bias<Layer>().size; i--;)
       *out_bias++ -= *in_bias++ * a;
+
+    get_layer<Layer>().reduce_similarity(random, dist);
 
     if constexpr (Layer)
       apply<Layer - 1>();
@@ -188,11 +192,7 @@ class neural_network {
 public:
   static constexpr T alpha = .5;
 
-  void init() {
-    auto r = seed_random<std::mt19937_64>();
-    std::normal_distribution<T> d{0, 1};
-    init<>(r, d);
-  }
+  void init() { init<>(); }
 
   void insert_pair(const vector_t<0> &x, const vector_t<last_layer + 1> &y) {
     data_in.emplace_back(x);

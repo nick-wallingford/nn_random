@@ -1,10 +1,13 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <iostream>
 #include <optional>
 #include <ostream>
+#include <random>
 
 namespace nnla {
 
@@ -12,6 +15,24 @@ template <typename T, size_t N> class alignas(64) vector;
 
 template <typename T, size_t Rows, size_t Columns> class alignas(64) matrix {
   std::array<T, Columns * Rows> d;
+
+  [[nodiscard]] __attribute__((noinline)) T similarity(const T *const A, size_t n) const noexcept {
+    T a = 0;
+    T b = 0;
+    T ab = 0;
+    const T *const B = (*this)[n];
+    for (size_t i = 0; i < Columns; i++) {
+      a += A[i] * A[i];
+      b += B[i] * B[i];
+      ab += A[i] * B[i];
+    }
+
+    ab /= std::sqrt(a);
+    ab /= std::sqrt(b);
+    return ab;
+  }
+
+  [[nodiscard]] constexpr T similarity(size_t m, size_t n) const noexcept { return similarity((*this)[m], n); }
 
 public:
   matrix(std::nullopt_t) noexcept {}
@@ -81,6 +102,8 @@ public:
         return false;
     return true;
   }
+
+  template <typename Rand> void reduce_similarity(Rand &random, std::normal_distribution<T> &d) noexcept;
 };
 
 static_assert(matrix<int, 2, 3>{{1, 2, 3, 4, 5, 6}} *
@@ -88,6 +111,17 @@ static_assert(matrix<int, 2, 3>{{1, 2, 3, 4, 5, 6}} *
               matrix<int, 2, 4>{{74, 80, 86, 92, 173, 188, 203, 218}});
 
 } // namespace nnla
+
+template <typename T, size_t Rows, size_t Columns>
+std::ostream &operator<<(std::ostream &o, const nnla::matrix<T, Rows, Columns> &m) {
+  for (size_t i = 0; i < Rows; i++) {
+    o << '[';
+    for (size_t j = 0; j < Columns; j++)
+      o << std::format("{:10} ", m[i][j]);
+    o << "]\n";
+  }
+  return o;
+}
 
 #include "vector.hpp"
 
@@ -109,6 +143,19 @@ matrix<T, Rows, Columns>::operator*(const vector<T, Columns> &v) const noexcept 
 }
 
 template <typename T, size_t Rows, size_t Columns>
+template <typename Rand>
+void matrix<T, Rows, Columns>::reduce_similarity(Rand &random, std::normal_distribution<T> &d) noexcept {
+  static constexpr T max_sim = static_cast<T>(31) / static_cast<T>(32);
+  for (size_t i = 0; i < Rows; i++)
+    for (size_t j = 0; j < i; j++)
+      if (const T sim = similarity(i, j); std::abs(sim) > max_sim) {
+        std::cout << "found similarity:\t" << j << '\t' << i << '\t' << sim << std::endl;
+        for (size_t k = 0; k < Columns; k++)
+          (*this)[j][k] = d(random);
+      }
+}
+
+template <typename T, size_t Rows, size_t Columns>
 constexpr void matrix<T, Rows, Columns>::add_outer_product(const vector<T, Rows> &a_,
                                                            const vector<T, Columns> &b_) noexcept {
   auto a = a_.begin();
@@ -124,14 +171,3 @@ constexpr void matrix<T, Rows, Columns>::add_outer_product(const vector<T, Rows>
 static_assert(matrix<int, 2, 3>{{1, 2, 3, 4, 5, 6}} * vector<int, 3>{{7, 8, 9}} == vector<int, 2>{{50, 122}});
 
 } // namespace nnla
-
-template <typename T, size_t Rows, size_t Columns>
-std::ostream &operator<<(std::ostream &o, const nnla::matrix<T, Rows, Columns> &m) {
-  for (size_t i = 0; i < Rows; i++) {
-    o << '[';
-    for (size_t j = 0; j < Columns; j++)
-      o << std::format("{:10} ", m[i][j]);
-    o << "]\n";
-  }
-  return o;
-}
