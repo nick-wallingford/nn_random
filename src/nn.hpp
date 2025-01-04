@@ -52,12 +52,12 @@ class neural_network {
 
   vector_tuple_t intermediate_results;
   vector_tuple_t intermediate_deltas;
-  vector_tuple_t biases_deltas;
   vector_tuple_t biases;
+  vector_tuple_t biase_deltas;
   template <size_t Layer> vector_t<Layer + 1> &get_result() noexcept { return std::get<Layer>(intermediate_results); }
   template <size_t Layer> vector_t<Layer + 1> &get_delta() noexcept { return std::get<Layer>(intermediate_deltas); }
   template <size_t Layer> vector_t<Layer + 1> &get_bias() noexcept { return std::get<Layer>(biases); }
-  template <size_t Layer> vector_t<Layer + 1> &get_bias_delta() noexcept { return std::get<Layer>(biases); }
+  template <size_t Layer> vector_t<Layer + 1> &get_bias_delta() noexcept { return std::get<Layer>(biase_deltas); }
   template <size_t Layer> const vector_t<Layer + 1> &get_bias() const noexcept { return std::get<Layer>(biases); }
 
   static constexpr T fudge = static_cast<T>(129) / static_cast<T>(128);
@@ -200,7 +200,7 @@ class neural_network {
   }
 
 public:
-  static constexpr T alpha = .1;
+  static constexpr T alpha = .5;
 
   void init() { init<>(); }
 

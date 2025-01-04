@@ -59,7 +59,7 @@ static char get_char(float x) {
   x -= unsure_t;
   x = std::abs(x);
   x /= true_t - unsure_t;
-  x *= 26;
+  x *= 25;
   x += 'a';
   return static_cast<char>(x);
 }
@@ -94,7 +94,7 @@ int main() {
   nn->init();
   fill_xo(*nn);
   for (size_t i = 0;; i++) {
-    const bool doit = !(i & (i - 1));
+    const bool doit = 0 == (i & 3);
     const auto e = nn->train();
     if (doit) {
       print(*nn);
