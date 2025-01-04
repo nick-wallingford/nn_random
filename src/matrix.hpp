@@ -8,8 +8,28 @@
 #include <optional>
 #include <ostream>
 #include <random>
+#include <x86intrin.h>
 
 namespace nnla {
+
+namespace detail {
+float reduce(float ab, float a, float b) {
+  __m128 x = _mm_setr_ps(a, b, 0, 0);
+  __m128 y = _mm_rsqrt_ps(x);
+  y = _mm_mul_ps(_mm_fnmadd_ps(_mm_mul_ps(x, _mm_set1_ps(.5f)), _mm_mul_ps(y, y), _mm_set1_ps(1.5f)), y);
+  y = _mm_mul_ss(y, _mm_shuffle_ps(y, y, 1));
+  return ab * _mm_cvtss_f32(y);
+}
+
+double reduce(double ab, double a, double b) {
+  __m128d x = _mm_set_pd(a, b);
+  __m128d y = _mm_rsqrt14_pd(x);
+  y = _mm_mul_pd(_mm_fnmadd_pd(_mm_mul_pd(x, _mm_set1_pd(.5)), _mm_mul_pd(y, y), _mm_set1_pd(1.5)), y);
+  y = _mm_mul_pd(_mm_fnmadd_pd(_mm_mul_pd(x, _mm_set1_pd(.5)), _mm_mul_pd(y, y), _mm_set1_pd(1.5)), y);
+  y = _mm_mul_sd(y, _mm_shuffle_pd(y, y, 1));
+  return ab * _mm_cvtsd_f64(y);
+}
+} // namespace detail
 
 template <typename T, size_t N> class alignas(64) vector;
 
@@ -27,9 +47,7 @@ template <typename T, size_t Rows, size_t Columns> class alignas(64) matrix {
       ab += A[i] * B[i];
     }
 
-    ab /= std::sqrt(a);
-    ab /= std::sqrt(b);
-    return ab;
+    return detail::reduce(ab, a, b);
   }
 
   [[nodiscard]] constexpr T similarity(size_t m, size_t n) const noexcept { return similarity((*this)[m], n); }
@@ -148,7 +166,7 @@ void matrix<T, Rows, Columns>::reduce_similarity(Rand &random, std::normal_distr
   static constexpr T max_sim = static_cast<T>(31) / static_cast<T>(32);
   for (size_t i = 0; i < Rows; i++)
     for (size_t j = 0; j < i; j++)
-      if (const T sim = similarity(i, j); std::abs(sim) > max_sim) {
+      if (const T sim = similarity(i, j); sim > max_sim) {
         std::cout << "found similarity:\t" << j << '\t' << i << '\t' << sim << std::endl;
         for (size_t k = 0; k < Columns; k++)
           (*this)[j][k] = d(random);

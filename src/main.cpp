@@ -55,22 +55,30 @@ static void fill_xo(neural_network_t &nn) {
   }
 }
 
+static char get_char(float x) {
+  x -= unsure_t;
+  x = std::abs(x);
+  x /= true_t - unsure_t;
+  x *= 26;
+  x += 'a';
+  return static_cast<char>(x);
+}
+
 static void print(const neural_network_t &nn) {
   std::vector<vector<float, 2>> in;
   for (float y = 4; y >= -4; y -= 16.f / 40.f)
     for (float x = -4; x <= 4; x += 8.f / 40.f)
       in.push_back(vector<float, 2>{{x, y}});
   const auto v = nn.forward(in);
-  static constexpr std::array<std::string_view, 3> chars{"\033[31mX", "\033[32m0", "\033[0m"};
+  static constexpr std::array<std::string_view, 3> chars{"\033[31m", "\033[32m", "\033[0m"};
   for (size_t i = 0; i < v[0].size; i++) {
     size_t j = 0;
     for (float y = 4; y >= -4; y -= 16.f / 40.f) {
-      for (float x = -4; x <= 4; x += 8.f / 40.f)
-        if (x * x + y * y > 16) {
-          j++;
+      for (float x = -4; x <= 4; x += 8.f / 40.f, ++j)
+        if (x * x + y * y > 16)
           std::cout << ' ';
-        } else
-          std::cout << chars[v[j++][i] > unsure_t];
+        else
+          std::cout << chars[v[j][i] > unsure_t] << get_char(v[j][i]);
       std::cout << chars[2] << '\n';
     }
     std::cout << '\n';

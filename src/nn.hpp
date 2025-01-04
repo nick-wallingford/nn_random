@@ -60,7 +60,7 @@ class neural_network {
   template <size_t Layer> vector_t<Layer + 1> &get_bias_delta() noexcept { return std::get<Layer>(biases); }
   template <size_t Layer> const vector_t<Layer + 1> &get_bias() const noexcept { return std::get<Layer>(biases); }
 
-  static constexpr T fudge = 1;
+  static constexpr T fudge = static_cast<T>(129) / static_cast<T>(128);
 
   std::vector<vector_t<0>> data_in;
   std::vector<vector_t<last_layer + 1>> data_out;
@@ -71,8 +71,7 @@ class neural_network {
 
     for (T &x : res) {
       if constexpr (f == sigmoid) {
-        const T e = 1 / (1 + std::exp(-x));
-        x = fudge * e;
+        x = fudge / (1 + std::exp(-x));
       } else {
         const T x1 = x * x + 1;
         const T x3 = 1 / std::sqrt(x1);
@@ -97,7 +96,7 @@ class neural_network {
 
     for (size_t i = 0; i < get_size<layer + 1>(); i++) {
       if constexpr (f == sigmoid) {
-        const T e = 1 / (1 + std::exp(-x[i]));
+        T e = 1 / (1 + std::exp(-x[i]));
         delta[i] = fudge * e * (1 - e);
         res[i] = fudge * e;
       } else {
@@ -151,14 +150,14 @@ class neural_network {
   }
 
   template <size_t Layer = last_layer>
-  __attribute__((noinline)) void backward(size_t i, vector_t<Layer + 1> grad_in) noexcept {
+  __attribute__((noinline)) void backward(const vector_t<0> &first_data, vector_t<Layer + 1> grad_in) noexcept {
     grad_in *= get_delta<Layer>();
     get_bias_delta<Layer>() += grad_in;
     if constexpr (Layer) {
       get_gradient<Layer>().add_outer_product(get_result<Layer - 1>(), grad_in);
-      backward<Layer - 1>(i, get_layer<Layer>() * grad_in);
+      backward<Layer - 1>(first_data, get_layer<Layer>() * grad_in);
     } else {
-      get_gradient<Layer>().add_outer_product(data_in[i], grad_in);
+      get_gradient<Layer>().add_outer_product(first_data, grad_in);
     }
   }
 
@@ -183,14 +182,25 @@ class neural_network {
     for (size_t i = get_bias<Layer>().size; i--;)
       *out_bias++ -= *in_bias++ * a;
 
-    get_layer<Layer>().reduce_similarity(random, dist);
+    // get_layer<Layer>().reduce_similarity(random, dist);
 
     if constexpr (Layer)
       apply<Layer - 1>();
   }
 
+  __attribute__((noinline)) vector_t<last_layer + 1> train(const vector_t<0> &in, const vector_t<last_layer + 1> &out) {
+    forward<>(in);
+    reset<>();
+    vector_t<last_layer + 1> E = get_result<last_layer>() - out;
+    const vector_t<last_layer + 1> ret = E * E;
+    E += E;
+    backward<>(in, E);
+    apply<>();
+    return ret;
+  }
+
 public:
-  static constexpr T alpha = .5;
+  static constexpr T alpha = .1;
 
   void init() { init<>(); }
 
@@ -201,16 +211,8 @@ public:
 
   vector_t<last_layer + 1> train() noexcept {
     vector_t<last_layer + 1> e{};
-    for (size_t i = 0; i < data_in.size(); i++) {
-      [[likely]];
-      forward<>(data_in[i]);
-      reset<>();
-      vector_t<last_layer + 1> E = get_result<last_layer>() - data_out[i];
-      e += E * E;
-      E += E;
-      backward<>(i, E);
-      apply<>();
-    }
+    for (size_t i = 0; i < data_in.size(); i++)
+      e += train(data_in[i], data_out[i]);
     e /= data_in.size();
     return e;
   }
