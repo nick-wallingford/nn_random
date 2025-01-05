@@ -1,0 +1,9 @@
+#pragma once
+
+#cmakedefine CPUCOUNT @CPU_COUNT@
+#if !defined(CPUCOUNT)
+#define CPUCOUNT 8
+#elif CPUCOUNT == 0
+#undef CPUCOUNT
+#define CPUCOUNT 8
+#endif

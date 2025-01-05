@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include "matrix.hpp"
 #include "vector.hpp"
 #include <boost/mp11.hpp>
@@ -37,13 +38,13 @@ class neural_network {
       boost::mp11::mp_transform<matrix_c, boost::mp11::mp_iota_c<boost::mp11::mp_size<sizes>::value - 1>>, std::tuple>;
 
   matrix_tuple_t layers;
-  matrix_tuple_t gradients;
+  std::array<matrix_tuple_t, CPUCOUNT> gradients;
 
   static constexpr size_t last_layer = std::tuple_size_v<matrix_tuple_t> - 1;
 
   template <size_t Layer> matrix_t<Layer> &get_layer() noexcept { return std::get<Layer>(layers); }
   template <size_t Layer> const matrix_t<Layer> &get_layer() const noexcept { return std::get<Layer>(layers); }
-  template <size_t Layer> matrix_t<Layer> &get_gradient() noexcept { return std::get<Layer>(gradients); }
+  template <size_t Layer> matrix_t<Layer> &get_gradient(size_t i) noexcept { return std::get<Layer>(gradients[i]); }
 
   template <size_t Layer> using vector_t = vector<T, boost::mp11::mp_at_c<sizes, Layer>::value>;
   template <typename Size> using vector_c = vector<T, Size::value>;
@@ -51,13 +52,17 @@ class neural_network {
       boost::mp11::mp_rename<boost::mp11::mp_transform<vector_c, boost::mp11::mp_pop_front<sizes>>, std::tuple>;
 
   vector_tuple_t intermediate_results;
-  vector_tuple_t intermediate_deltas;
+  std::array<vector_tuple_t, CPUCOUNT> intermediate_deltas;
   vector_tuple_t biases;
-  vector_tuple_t biase_deltas;
+  std::array<vector_tuple_t, CPUCOUNT> bias_deltas;
   template <size_t Layer> vector_t<Layer + 1> &get_result() noexcept { return std::get<Layer>(intermediate_results); }
-  template <size_t Layer> vector_t<Layer + 1> &get_delta() noexcept { return std::get<Layer>(intermediate_deltas); }
+  template <size_t Layer> vector_t<Layer + 1> &get_delta(size_t i) noexcept {
+    return std::get<Layer>(intermediate_deltas[i]);
+  }
   template <size_t Layer> vector_t<Layer + 1> &get_bias() noexcept { return std::get<Layer>(biases); }
-  template <size_t Layer> vector_t<Layer + 1> &get_bias_delta() noexcept { return std::get<Layer>(biase_deltas); }
+  template <size_t Layer> vector_t<Layer + 1> &get_bias_delta(size_t i) noexcept {
+    return std::get<Layer>(bias_deltas[i]);
+  }
   template <size_t Layer> const vector_t<Layer + 1> &get_bias() const noexcept { return std::get<Layer>(biases); }
 
   static constexpr T fudge = static_cast<T>(129) / static_cast<T>(128);
@@ -87,7 +92,7 @@ class neural_network {
 
   template <size_t layer> void apply_activation_and_delta(const vector_t<layer + 1> &x) noexcept {
     vector_t<layer + 1> &res = get_result<layer>();
-    vector_t<layer + 1> &delta = get_delta<layer>();
+    vector_t<layer + 1> &delta = get_delta<layer>(0);
 
     [[assume(&res != &delta)]];
 
@@ -151,34 +156,34 @@ class neural_network {
 
   template <size_t Layer = last_layer>
   __attribute__((noinline)) void backward(const vector_t<0> &first_data, vector_t<Layer + 1> grad_in) noexcept {
-    grad_in *= get_delta<Layer>();
-    get_bias_delta<Layer>() += grad_in;
+    get_bias_delta<Layer>(0) += grad_in;
+    grad_in *= get_delta<Layer>(0);
     if constexpr (Layer) {
-      get_gradient<Layer>().add_outer_product(get_result<Layer - 1>(), grad_in);
+      get_gradient<Layer>(0).add_outer_product(get_result<Layer - 1>(), grad_in);
       backward<Layer - 1>(first_data, get_layer<Layer>() * grad_in);
     } else {
-      get_gradient<Layer>().add_outer_product(first_data, grad_in);
+      get_gradient<Layer>(0).add_outer_product(first_data, grad_in);
     }
   }
 
-  template <size_t Layer = last_layer> void reset() {
-    for (T &x : get_gradient<Layer>())
+  template <size_t Layer = last_layer> void reset(size_t i) {
+    for (T &x : get_gradient<Layer>(i))
       x = 0;
-    for (T &x : get_bias_delta<Layer>())
+    for (T &x : get_bias_delta<Layer>(i))
       x = 0;
     if constexpr (Layer)
-      reset<Layer - 1>();
+      reset<Layer - 1>(i);
   }
 
   template <size_t Layer = last_layer> void apply() {
     auto out = get_layer<Layer>().begin();
-    auto in = get_gradient<Layer>().begin();
+    auto in = get_gradient<Layer>(0).begin();
     const T a = alpha / data_in.size();
     for (size_t i = get_layer<Layer>().size; i--; ++out, ++in)
       *out -= *in * a;
 
     auto out_bias = get_bias<Layer>().begin();
-    auto in_bias = get_bias_delta<Layer>().begin();
+    auto in_bias = get_bias_delta<Layer>(0).begin();
     for (size_t i = get_bias<Layer>().size; i--;)
       *out_bias++ -= *in_bias++ * a;
 
@@ -190,7 +195,7 @@ class neural_network {
 
   __attribute__((noinline)) vector_t<last_layer + 1> train(const vector_t<0> &in, const vector_t<last_layer + 1> &out) {
     forward<>(in);
-    reset<>();
+    reset<>(0);
     vector_t<last_layer + 1> E = get_result<last_layer>() - out;
     const vector_t<last_layer + 1> ret = E * E;
     E += E;
