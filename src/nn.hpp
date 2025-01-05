@@ -204,8 +204,21 @@ class neural_network {
     return ret;
   }
 
+  template <size_t layer> void shuffle(size_t l) {
+    if (layer == l) {
+      auto &m = get_layer<layer>();
+      std::uniform_int_distribution<size_t> d{0, m.size_rows() - 1};
+      const auto r = d(random);
+      for (size_t c = 0; c < m.size_columns(); c++)
+        m[r][c] = dist(random);
+    } else {
+      if constexpr (layer < last_layer)
+        shuffle<layer + 1>(l);
+    }
+  }
+
 public:
-  static constexpr T alpha = .5;
+  static constexpr T alpha = .1;
 
   void init() { init<>(); }
 
@@ -228,6 +241,12 @@ public:
     for (const auto &v : in)
       out.emplace_back(forward_use<>(v));
     return out;
+  }
+
+  void shuffle() {
+    std::uniform_int_distribution<int> d{0, last_layer - 1};
+    const auto layer_to_shuffle = d(random);
+    shuffle<0>(layer_to_shuffle);
   }
 };
 

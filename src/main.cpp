@@ -93,14 +93,34 @@ int main() {
   std::unique_ptr<neural_network_t> nn = std::make_unique<neural_network_t>();
   nn->init();
   fill_xo(*nn);
+  float last_err = std::numeric_limits<float>::max();
   for (size_t i = 0;; i++) {
+#if 1
     const bool doit = 0 == (i & 3);
+#else
+    static constexpr bool doit = true;
+#endif
     const auto e = nn->train();
     if (doit) {
-      print(*nn);
-      std::cout << nn->alpha << '\t' << e.sum() << '\t' << e << std::endl;
+      // print(*nn);
+
+      const float this_err = e.sum();
+      const float err_improvement = this_err - last_err;
+      const float ratio = this_err / err_improvement;
+      std::cout << nn->alpha << '\t' << this_err << '\t' << err_improvement << '\t' << ratio << '\t' << e << std::endl;
+
+      if (ratio < -1000) {
+        if (this_err < .7f)
+          break;
+        std::cout << "shuffle: " << ratio << std::endl;
+        nn->shuffle();
+        last_err = std::numeric_limits<float>::max();
+      } else
+        last_err = this_err;
     }
   }
+  print(*nn);
+
 #elif 1
   neural_network<float, activation_function::square_sigmoid, activation_function::square_sigmoid, 2, 2, 2> nn;
   nn.init();

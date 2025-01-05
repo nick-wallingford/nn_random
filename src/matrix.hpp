@@ -61,6 +61,8 @@ public:
 
   [[nodiscard]] constexpr const T *operator[](size_t y) const noexcept { return d.data() + y * Columns; }
   [[nodiscard]] constexpr T *operator[](size_t y) noexcept { return d.data() + y * Columns; }
+  [[nodiscard]] constexpr size_t size_rows() const noexcept { return Rows; }
+  [[nodiscard]] constexpr size_t size_columns() const noexcept { return Columns; }
 
   static constexpr size_t size = Rows * Columns;
   template <typename Self> [[nodiscard]] constexpr auto begin(this Self &&self) { return self.d.begin(); }
